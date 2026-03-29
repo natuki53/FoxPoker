@@ -1,0 +1,616 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==============================
+// ユーザー関連
+// ==============================
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  displayName     String     @default("名無し")
+  avatarUrl       String?
+  role            UserRole   @default(USER)
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  authProviders           AuthProvider[]
+  ownedStores             Store[]                  @relation("StoreOwner")
+  reviews                 Review[]
+  reviewHelpfulVotes      ReviewHelpfulVote[]
+  reviewReports           ReviewReport[]
+  favoriteStores          FavoriteStore[]
+  tournamentRegistrations TournamentRegistration[]
+  storeApplications       StoreApplication[]       @relation("Applicant")
+  reviewReplies           ReviewReply[]
+  storeStaff              StoreStaff[]
+  reviewedApplications    StoreApplication[]       @relation("Reviewer")
+  requestedStoreInfoEdits StoreInfoEditRequest[]   @relation("StoreInfoEditRequester")
+  reviewedStoreInfoEdits  StoreInfoEditRequest[]   @relation("StoreInfoEditReviewer")
+
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  STORE_ADMIN
+  SYSTEM_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model AuthProvider {
+  id          String           @id @default(cuid())
+  userId      String
+  provider    AuthProviderType
+  providerUid String
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@map("auth_providers")
+}
+
+enum AuthProviderType {
+  GOOGLE
+  TWITTER
+  LINE
+}
+
+// ==============================
+// 店舗関連
+// ==============================
+
+model Store {
+  id                 String      @id @default(cuid())
+  ownerUserId        String
+  name               String
+  nameKana           String?
+  description        String?
+  prefectureCode     String
+  city               String
+  address            String
+  postalCode         String
+  phone              String?
+  websiteUrl         String?
+  twitterUrl         String?
+  instagramUrl       String?
+  latitude           Float?
+  longitude          Float?
+  status             StoreStatus @default(PENDING)
+  isEmergencyClosed  Boolean     @default(false)
+  emergencyCloseNote String?
+  /// 公開ページ用ブロック（見出し・本文・画像など）。JSON配列。
+  publicPageBlocks   Json?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  owner        User               @relation("StoreOwner", fields: [ownerUserId], references: [id])
+  prefecture   Prefecture         @relation(fields: [prefectureCode], references: [code])
+  hours        StoreHour[]
+  games        StoreGame[]
+  events       StoreEvent[]
+  photos       StorePhoto[]
+  galleryImages StoreGalleryImage[]
+  tags         StoreTag[]
+  staff        StoreStaff[]
+  tournaments  Tournament[]
+  reviews      Review[]
+  applications StoreApplication[]
+  listings     StoreListing[]
+  invoices     Invoice[]
+  favorites    FavoriteStore[]
+  infoEditRequests StoreInfoEditRequest[]
+
+  @@map("stores")
+}
+
+enum StoreStatus {
+  PENDING
+  AWAITING_PAYMENT
+  APPROVED
+  SUSPENDED
+  CLOSED
+}
+
+model StoreInfoEditRequest {
+  id                String                     @id @default(cuid())
+  storeId           String
+  requestedByUserId String
+  status            StoreInfoEditRequestStatus @default(PENDING)
+  name              String
+  nameKana          String?
+  prefectureCode    String
+  city              String
+  address           String
+  postalCode        String
+  phone             String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  store       Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  requestedBy User       @relation("StoreInfoEditRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  reviewer    User?      @relation("StoreInfoEditReviewer", fields: [reviewedBy], references: [id])
+  prefecture  Prefecture @relation(fields: [prefectureCode], references: [code])
+
+  @@index([storeId, status])
+  @@index([requestedByUserId, status])
+  @@map("store_info_edit_requests")
+}
+
+enum StoreInfoEditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StoreHour {
+  id          String  @id @default(cuid())
+  storeId     String
+  dayOfWeek   Int
+  openTime    String?
+  closeTime   String?
+  isClosed    Boolean @default(false)
+  isOvernight Boolean @default(false)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, dayOfWeek])
+  @@map("store_hours")
+}
+
+model StoreGame {
+  id         String  @id @default(cuid())
+  storeId    String
+  gameTypeId String
+  smallBlind Int?
+  bigBlind   Int
+  minBuyin   Int?
+  maxBuyin   Int?
+  tableCount Int?
+  notes      String?
+  isActive   Boolean @default(true)
+  sortOrder  Int     @default(0)
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  gameType GameType @relation(fields: [gameTypeId], references: [id])
+
+  @@map("store_games")
+}
+
+model StorePhoto {
+  id         String   @id @default(cuid())
+  storeId    String
+  storageKey String
+  url        String
+  altText    String?
+  sortOrder  Int      @default(0)
+  isMain     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_photos")
+}
+
+model StoreGalleryImage {
+  id         String   @id @default(cuid())
+  storeId    String
+  storageKey String
+  url        String
+  altText    String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_gallery_images")
+}
+
+model StoreEvent {
+  id          String   @id @default(cuid())
+  storeId     String
+  title       String
+  schedule    String?
+  description String?
+  linkLabel   String?
+  linkUrl     String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_events")
+}
+
+model StoreTag {
+  storeId String
+  tagId   String
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id])
+
+  @@id([storeId, tagId])
+  @@map("store_tags")
+}
+
+model StoreStaff {
+  id        String    @id @default(cuid())
+  storeId   String
+  userId    String
+  role      StaffRole @default(EDITOR)
+  invitedBy String
+  createdAt DateTime  @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, userId])
+  @@map("store_staff")
+}
+
+enum StaffRole {
+  EDITOR
+}
+
+// ==============================
+// 掲載・課金関連
+// ==============================
+
+model ListingPlan {
+  id                     String  @id @default(cuid())
+  name                   String
+  rank                   Int
+  price1month            Int
+  price3months           Int
+  price6months           Int
+  price12months          Int
+  maxPhotos              Int
+  hasTournament          Boolean @default(false)
+  hasAnalyticsBasic      Boolean @default(true)
+  hasAnalyticsKeyword    Boolean @default(false)
+  hasAnalyticsCompetitor Boolean @default(false)
+  maxSubAccounts         Int     @default(0)
+  description            String?
+  stripeProductId        String? @unique
+  isActive               Boolean @default(true)
+  sortOrder              Int     @default(0)
+
+  applications StoreApplication[]
+  listings     StoreListing[]
+
+  @@map("listing_plans")
+}
+
+model StoreApplication {
+  id                String            @id @default(cuid())
+  storeId           String
+  applicantUserId   String
+  planId            String
+  billingPeriod     BillingPeriod
+  status            ApplicationStatus @default(SUBMITTED)
+  rejectionReason   String?
+  identityDocUrl    String?
+  storeDocUrl       String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  paymentLinkSentAt DateTime?
+  submittedAt       DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+
+  store     Store        @relation(fields: [storeId], references: [id])
+  applicant User         @relation("Applicant", fields: [applicantUserId], references: [id])
+  plan      ListingPlan  @relation(fields: [planId], references: [id])
+  reviewer  User?        @relation("Reviewer", fields: [reviewedBy], references: [id])
+  listing   StoreListing?
+
+  @@map("store_applications")
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  REVIEWING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum BillingPeriod {
+  ONE_MONTH
+  THREE_MONTHS
+  SIX_MONTHS
+  TWELVE_MONTHS
+}
+
+model StoreListing {
+  id                    String        @id @default(cuid())
+  storeId               String
+  applicationId         String?       @unique
+  planId                String
+  billingPeriod         BillingPeriod
+  startsAt              DateTime
+  endsAt                DateTime
+  status                ListingStatus @default(ACTIVE)
+  stripePaymentIntentId String?
+  stripeSessionId       String?
+  amountPaid            Int
+  taxAmount             Int
+  paidAt                DateTime?
+  createdAt             DateTime      @default(now())
+
+  store       Store             @relation(fields: [storeId], references: [id])
+  application StoreApplication? @relation(fields: [applicationId], references: [id])
+  plan        ListingPlan       @relation(fields: [planId], references: [id])
+  invoices    Invoice[]
+
+  @@map("store_listings")
+}
+
+enum ListingStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  listingId     String
+  storeId       String
+  invoiceNumber String        @unique
+  amount        Int
+  taxAmount     Int
+  totalAmount   Int
+  status        InvoiceStatus @default(ISSUED)
+  issuedAt      DateTime      @default(now())
+  paidAt        DateTime?
+  pdfUrl        String?
+
+  listing StoreListing @relation(fields: [listingId], references: [id])
+  store   Store        @relation(fields: [storeId], references: [id])
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  ISSUED
+  PAID
+  VOID
+}
+
+// ==============================
+// トーナメント関連
+// ==============================
+
+model Tournament {
+  id                String           @id @default(cuid())
+  storeId           String
+  gameTypeId        String
+  title             String
+  description       String?
+  startsAt          DateTime
+  buyinAmount       Int
+  rebuyAllowed      Boolean          @default(false)
+  rebuyAmount       Int?
+  addonAllowed      Boolean          @default(false)
+  addonAmount       Int?
+  guaranteeAmount   Int?
+  maxEntries        Int?
+  lateRegLevel      Int?
+  startingStack     Int?
+  blindStructureUrl String?
+  status            TournamentStatus @default(SCHEDULED)
+  isRecurring       Boolean          @default(false)
+  recurringRule     Json?
+  parentTournamentId String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  store         Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  gameType      GameType                 @relation(fields: [gameTypeId], references: [id])
+  result        TournamentResult?
+  registrations TournamentRegistration[]
+
+  @@map("tournaments")
+}
+
+enum TournamentStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model TournamentResult {
+  id           String   @id @default(cuid())
+  tournamentId String   @unique
+  totalEntries Int
+  totalRebuys  Int?
+  totalAddons  Int?
+  prizePool    Int
+  notes        String?
+  publishedAt  DateTime @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@map("tournament_results")
+}
+
+model TournamentRegistration {
+  id           String    @id @default(cuid())
+  tournamentId String
+  userId       String
+  remindAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@map("tournament_registrations")
+}
+
+// ==============================
+// 口コミ関連
+// ==============================
+
+model Review {
+  id              String       @id @default(cuid())
+  storeId         String
+  userId          String
+  scoreOverall    Float
+  scoreAtmosphere Int
+  scoreStaff      Int
+  scoreValue      Int
+  scoreFacility   Int
+  comment         String
+  visitDate       DateTime?
+  status          ReviewStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply        ReviewReply?
+  helpfulVotes ReviewHelpfulVote[]
+  reports      ReviewReport[]
+
+  @@unique([storeId, userId])
+  @@map("reviews")
+}
+
+enum ReviewStatus {
+  ACTIVE
+  HIDDEN
+  DELETED
+}
+
+model ReviewReply {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  storeId   String
+  repliedBy String
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  review  Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  replier User   @relation(fields: [repliedBy], references: [id])
+
+  @@map("review_replies")
+}
+
+model ReviewHelpfulVote {
+  reviewId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([reviewId, userId])
+  @@map("review_helpful_votes")
+}
+
+model ReviewReport {
+  id             String             @id @default(cuid())
+  reviewId       String
+  reporterUserId String?
+  reason         ReviewReportReason
+  notes          String?
+  status         ReportStatus       @default(PENDING)
+  createdAt      DateTime           @default(now())
+
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reporter User?  @relation(fields: [reporterUserId], references: [id])
+
+  @@map("review_reports")
+}
+
+enum ReviewReportReason {
+  SPAM
+  FAKE
+  INAPPROPRIATE
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+}
+
+// ==============================
+// ユーザーアクション
+// ==============================
+
+model FavoriteStore {
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, storeId])
+  @@map("favorite_stores")
+}
+
+// ==============================
+// マスタデータ
+// ==============================
+
+model GameType {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  abbreviation String  @unique
+  description  String?
+  isActive     Boolean @default(true)
+  sortOrder    Int     @default(0)
+
+  storeGames  StoreGame[]
+  tournaments Tournament[]
+
+  @@map("master_game_types")
+}
+
+model Prefecture {
+  code     String @id
+  name     String @unique
+  nameKana String
+  region   String
+  slug     String @unique
+
+  stores Store[]
+  storeInfoEditRequests StoreInfoEditRequest[]
+
+  @@map("master_prefectures")
+}
+
+model Tag {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  category  String
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  storeTags StoreTag[]
+
+  @@map("master_tags")
+}

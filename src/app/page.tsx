@@ -1,65 +1,271 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Search, MapPin, Trophy, Star } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+import { Button } from "@/components/ui/button";
+import { PlanBadge } from "@/components/ui/badge";
+import { formatPrice } from "@/lib/utils";
+
+async function getTopPageData() {
+  const featuredStores = await prisma.store.findMany({
+    where: {
+      status: "APPROVED",
+      isEmergencyClosed: false,
+      listings: { some: { status: "ACTIVE", endsAt: { gt: new Date() } } },
+    },
+    include: {
+      prefecture: true,
+      photos: { where: { isMain: true }, take: 1 },
+      events: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], take: 2 },
+      listings: {
+        where: { status: "ACTIVE", endsAt: { gt: new Date() } },
+        include: { plan: true },
+        orderBy: { plan: { rank: "desc" } },
+        take: 1,
+      },
+      _count: { select: { reviews: { where: { status: "ACTIVE" } } } },
+    },
+    take: 8,
+  });
+
+  const upcomingTournaments = await prisma.tournament.findMany({
+    where: {
+      status: "SCHEDULED",
+      startsAt: { gt: new Date() },
+      store: {
+        status: "APPROVED",
+        listings: { some: { status: "ACTIVE", endsAt: { gt: new Date() } } },
+      },
+    },
+    include: {
+      store: {
+        include: {
+          prefecture: true,
+          listings: {
+            where: { status: "ACTIVE", endsAt: { gt: new Date() } },
+            include: { plan: true },
+            orderBy: { plan: { rank: "desc" } },
+            take: 1,
+          },
+        },
+      },
+      gameType: true,
+    },
+    orderBy: { startsAt: "asc" },
+    take: 6,
+  });
+
+  return { featuredStores, upcomingTournaments };
+}
+
+/** 人口規模の大きい県を、北から南の地理順 */
+const MAJOR_PREFECTURES = [
+  { slug: "hokkaido", name: "北海道" },
+  { slug: "tokyo", name: "東京" },
+  { slug: "kanagawa", name: "神奈川" },
+  { slug: "aichi", name: "愛知" },
+  { slug: "kyoto", name: "京都" },
+  { slug: "osaka", name: "大阪" },
+  { slug: "hyogo", name: "兵庫" },
+  { slug: "fukuoka", name: "福岡" },
+];
+
+export default async function Home() {
+  const { featuredStores, upcomingTournaments } = await getTopPageData();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div>
+      {/* HERO */}
+      <section className="bg-gradient-to-br from-slate-800 to-slate-900 text-white py-16 px-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-3xl md:text-5xl font-bold mb-4 leading-tight">
+            全国のポーカー情報が、<br className="hidden md:block" />ここに集まる。
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-slate-300 text-lg mb-8">
+            アミューズメントポーカー店舗の検索・トーナメント情報・口コミを一元確認
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <form action="/search" className="flex max-w-xl mx-auto rounded-xl overflow-hidden shadow-xl shadow-slate-950/30">
+            <input
+              name="keyword"
+              type="text"
+              placeholder="店舗名・エリア名で検索..."
+              className="flex-1 px-5 py-4 bg-white text-slate-900 placeholder:text-slate-500 text-base caret-slate-900 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-inset"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <button
+              type="submit"
+              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-4 flex items-center gap-2 font-medium transition-colors"
+            >
+              <Search size={20} /> 検索
+            </button>
+          </form>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {["東京", "大阪", "神奈川", "NLH"].map((tag) => (
+              <Link
+                key={tag}
+                href={`/search?keyword=${tag}`}
+                className="text-sm text-slate-400 hover:text-white px-3 py-1 bg-white/10 rounded-full transition-colors"
+              >
+                {tag}
+              </Link>
+            ))}
+          </div>
         </div>
-      </main>
+      </section>
+
+      {/* エリアクイックアクセス */}
+      <section className="max-w-7xl mx-auto px-4 py-10">
+        <h2 className="text-xl font-bold text-slate-800 mb-5 flex items-center gap-2">
+          <MapPin size={20} className="text-orange-500" /> エリアから探す
+        </h2>
+        <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+          {MAJOR_PREFECTURES.map((p) => (
+            <Link
+              key={p.slug}
+              href={`/area/${p.slug}`}
+              className="flex items-center justify-center p-3 bg-white rounded-xl border border-slate-200 hover:border-orange-300 hover:shadow-sm transition-all text-xs font-medium text-slate-700 text-center"
+            >
+              {p.name}
+            </Link>
+          ))}
+          <Link
+            href="/area"
+            className="flex items-center justify-center p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 hover:border-orange-300 transition-all text-xs text-slate-500 text-center"
+          >
+            全国を見る →
+          </Link>
+        </div>
+      </section>
+
+      {/* 直近のトーナメント */}
+      {upcomingTournaments.length > 0 && (
+        <section className="bg-white border-y border-slate-200 py-10">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Trophy size={20} className="text-orange-500" /> 直近のトーナメント
+              </h2>
+              <Link href="/tournament" className="text-sm text-orange-500 hover:text-orange-600 font-medium">
+                すべて見る →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {upcomingTournaments.map((tn) => (
+                <Link
+                  key={tn.id}
+                  href={`/store/${tn.storeId}`}
+                  className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-orange-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        {tn.store.name}（{tn.store.prefecture.name}・{tn.store.city}）
+                      </p>
+                      <p className="font-semibold text-slate-800 mt-0.5">{tn.title}</p>
+                    </div>
+                    <PlanBadge rank={tn.store.listings[0]?.plan.rank ?? 1} />
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 mt-2">
+                    <span>
+                      📅{" "}
+                      {new Date(tn.startsAt).toLocaleDateString("ja-JP", {
+                        month: "numeric",
+                        day: "numeric",
+                        weekday: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span>💰 BI {formatPrice(tn.buyinAmount)}</span>
+                    {tn.guaranteeAmount && <span>🏆 GTD {formatPrice(tn.guaranteeAmount)}</span>}
+                    <span>🃏 {tn.gameType.abbreviation}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 掲載店舗 */}
+      <section className="max-w-7xl mx-auto px-4 py-10">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Star size={20} className="text-orange-500" /> 掲載店舗
+          </h2>
+          <Link href="/search" className="text-sm text-orange-500 hover:text-orange-600 font-medium">
+            すべて見る →
+          </Link>
+        </div>
+
+        {featuredStores.length === 0 ? (
+          <div className="text-center py-16 text-slate-400">
+            <p className="text-5xl mb-4">🃏</p>
+            <p className="text-lg font-medium">現在掲載中の店舗はありません</p>
+            <Link href="/store-owner" className="mt-4 inline-block">
+              <Button>最初の店舗を掲載する</Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {featuredStores.map((store) => {
+              const planRank = store.listings[0]?.plan.rank ?? 1;
+              const photo = store.photos[0];
+              return (
+                <Link
+                  key={store.id}
+                  href={`/store/${store.id}`}
+                  className="bg-white rounded-xl border border-slate-200 hover:border-orange-300 hover:shadow-md transition-all overflow-hidden"
+                >
+                  <div className="relative h-36 bg-slate-100">
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={photo.url} alt={photo.altText ?? store.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-5xl">🃏</div>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      <PlanBadge rank={planRank} />
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <p className="font-semibold text-slate-800 truncate">{store.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{store.prefecture.name} · {store.city}</p>
+                    {store.events.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {store.events.map((event) => (
+                          <p key={event.id} className="text-xs text-slate-600 truncate">
+                            {event.schedule ? `${event.schedule} ` : ""}{event.title}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-400 mt-2">{store._count.reviews}件の口コミ</p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 店舗オーナー向けCTA */}
+      <section className="bg-orange-50 border-t border-orange-100 py-12">
+        <div className="max-w-3xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-bold text-slate-800 mb-3">あなたのお店を掲載しませんか？</h2>
+          <p className="text-slate-600 mb-6">
+            店舗ページの掲載は無料で始められます。有料プランでは検索・一覧での上位表示や、トップページのイベント情報などでの紹介など、露出を強化できます。
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/store-owner">
+              <Button size="lg">掲載案内を見る</Button>
+            </Link>
+            <Link href="/store-admin/apply">
+              <Button variant="outline" size="lg">無料審査を申請する</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
