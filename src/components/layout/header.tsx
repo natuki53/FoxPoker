@@ -40,6 +40,9 @@ export function Header() {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-2">
+          <Link href="/event" className="text-sm text-rose-50 hover:text-white hover:bg-white/10 rounded-md px-3 py-2 transition-colors">
+            イベント情報
+          </Link>
           <Link href="/tournament" className="text-sm text-rose-50 hover:text-white hover:bg-white/10 rounded-md px-3 py-2 transition-colors">
             トーナメント
           </Link>
@@ -58,9 +61,7 @@ export function Header() {
                 <div className="bg-white border border-rose-100 rounded-lg shadow-lg py-1">
                   <Link href="/mypage" className="block px-4 py-2 text-sm text-slate-700 hover:bg-rose-50">マイページ</Link>
                   <Link href="/mypage/favorites" className="block px-4 py-2 text-sm text-slate-700 hover:bg-rose-50">お気に入り</Link>
-                  {(session.user as { role?: string })?.role === "STORE_ADMIN" && (
-                    <Link href="/store-admin" className="block px-4 py-2 text-sm text-slate-700 hover:bg-rose-50">店舗管理</Link>
-                  )}
+                  <Link href="/store-admin" className="block px-4 py-2 text-sm text-slate-700 hover:bg-rose-50">店舗掲載</Link>
                   {(session.user as { role?: string })?.role === "SYSTEM_ADMIN" && (
                     <Link href="/admin" className="block px-4 py-2 text-sm text-slate-700 hover:bg-rose-50">管理画面</Link>
                   )}
@@ -75,14 +76,9 @@ export function Header() {
               </div>
             </div>
           ) : (
-            <>
-              <Link href="/auth/login">
-                <Button variant="outline" size="sm">ログイン</Button>
-              </Link>
-              <Link href="/store-owner">
-                <Button size="sm">掲載案内</Button>
-              </Link>
-            </>
+            <Link href="/auth/login">
+              <Button variant="outline" size="sm">ログイン</Button>
+            </Link>
           )}
         </nav>
 
@@ -110,14 +106,13 @@ export function Header() {
             </button>
           </form>
           <nav className="space-y-1">
+            <Link href="/event" className="block py-2 text-sm text-rose-50">イベント情報</Link>
             <Link href="/tournament" className="block py-2 text-sm text-rose-50">トーナメント</Link>
             <Link href="/area" className="block py-2 text-sm text-rose-50">エリア検索</Link>
             {session ? (
               <>
                 <Link href="/mypage" className="block py-2 text-sm text-rose-50">マイページ</Link>
-                {(session.user as { role?: string })?.role === "STORE_ADMIN" && (
-                  <Link href="/store-admin" className="block py-2 text-sm text-rose-50">店舗管理</Link>
-                )}
+                <Link href="/store-admin" className="block py-2 text-sm text-rose-50">店舗掲載</Link>
                 {(session.user as { role?: string })?.role === "SYSTEM_ADMIN" && (
                   <Link href="/admin" className="block py-2 text-sm text-rose-50">管理画面</Link>
                 )}
@@ -126,10 +121,7 @@ export function Header() {
                 </button>
               </>
             ) : (
-              <>
-                <Link href="/auth/login" className="block py-2 text-sm text-rose-50">ログイン</Link>
-                <Link href="/store-owner" className="block py-2 text-sm font-medium text-amber-200">掲載案内</Link>
-              </>
+              <Link href="/auth/login" className="block py-2 text-sm text-rose-50">ログイン</Link>
             )}
           </nav>
         </div>

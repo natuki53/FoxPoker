@@ -28,6 +28,16 @@ export async function approveApplication(formData: FormData) {
   const price = getPlanPrice(application.plan, application.billingPeriod);
 
   await prisma.$transaction(async (tx) => {
+    const hasActiveListing = await tx.storeListing.findFirst({
+      where: {
+        storeId: application.storeId,
+        status: "ACTIVE",
+        endsAt: { gt: new Date() },
+        paidAt: { not: null },
+      },
+      select: { id: true },
+    });
+
     await tx.storeApplication.update({
       where: { id },
       data: {
@@ -37,10 +47,12 @@ export async function approveApplication(formData: FormData) {
       },
     });
 
-    await tx.store.update({
-      where: { id: application.storeId },
-      data: { status: "AWAITING_PAYMENT" },
-    });
+    if (!hasActiveListing) {
+      await tx.store.update({
+        where: { id: application.storeId },
+        data: { status: "AWAITING_PAYMENT" },
+      });
+    }
 
     if (price === 0) {
       const existing = await tx.storeListing.findFirst({
@@ -50,7 +62,8 @@ export async function approveApplication(formData: FormData) {
         const startsAt = new Date();
         const endsAt = calcListingEndsAt(
           startsAt,
-          application.billingPeriod
+          application.billingPeriod,
+          price === 0
         );
         await tx.storeListing.create({
           data: {
@@ -89,7 +102,7 @@ export async function rejectApplication(formData: FormData) {
   const reason = formData.get("reason") as string;
   if (!id) throw new Error("Application ID is required");
 
-  await prisma.storeApplication.update({
+  const application = await prisma.storeApplication.update({
     where: { id },
     data: {
       status: "REJECTED",
@@ -97,10 +110,13 @@ export async function rejectApplication(formData: FormData) {
       reviewedBy: session.user.id,
       reviewedAt: new Date(),
     },
+    select: { storeId: true },
   });
 
   revalidatePath("/admin");
   revalidatePath("/admin/applications");
+  revalidatePath("/store-admin");
+  revalidatePath(`/store-admin/stores/${application.storeId}`);
 }
 
 export async function suspendStore(formData: FormData) {
@@ -286,10 +302,19 @@ export async function markStorePaymentCompleteAdmin(
   const price = getPlanPrice(application.plan, application.billingPeriod);
   const taxAmount = Math.floor(price * 0.1);
   const startsAt = new Date();
-  const endsAt = calcListingEndsAt(startsAt, application.billingPeriod);
+  const endsAt = calcListingEndsAt(startsAt, application.billingPeriod, price === 0);
+  const hasActiveListing = await prisma.storeListing.findFirst({
+    where: {
+      storeId,
+      status: "ACTIVE",
+      endsAt: { gt: new Date() },
+      paidAt: { not: null },
+    },
+    select: { id: true },
+  });
 
-  await prisma.$transaction([
-    prisma.storeListing.create({
+  await prisma.$transaction(async (tx) => {
+    await tx.storeListing.create({
       data: {
         storeId,
         applicationId: application.id,
@@ -304,12 +329,15 @@ export async function markStorePaymentCompleteAdmin(
         taxAmount,
         paidAt: new Date(),
       },
-    }),
-    prisma.store.update({
-      where: { id: storeId },
-      data: { status: "AWAITING_PAYMENT" },
-    }),
-  ]);
+    });
+
+    if (!hasActiveListing) {
+      await tx.store.update({
+        where: { id: storeId },
+        data: { status: "AWAITING_PAYMENT" },
+      });
+    }
+  });
 
   revalidatePath("/admin");
   revalidatePath("/admin/stores");

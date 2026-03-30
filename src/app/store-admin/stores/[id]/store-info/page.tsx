@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureMasterPrefectures } from "@/lib/prefectures";
 import { formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export default async function StoreInfoEditPage({ params, searchParams }: Props)
   const saved = typeof query.saved === "string";
   const error = typeof query.error === "string" ? query.error : undefined;
 
+  await ensureMasterPrefectures();
   const [store, prefectures] = await Promise.all([
     prisma.store.findFirst({
       where: { id, ownerUserId: session.user.id },

@@ -229,6 +229,7 @@ model StoreEvent {
   title       String
   schedule    String?
   description String?
+  imageUrl    String?
   linkLabel   String?
   linkUrl     String?
   isActive    Boolean  @default(true)

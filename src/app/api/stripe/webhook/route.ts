@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     const price = getPlanPrice(plan, meta.billingPeriod);
     const taxAmount = Math.floor(price * 0.1);
     const startsAt = new Date();
-    const endsAt = calcListingEndsAt(startsAt, meta.billingPeriod);
+    const endsAt = calcListingEndsAt(startsAt, meta.billingPeriod, price === 0);
 
     await prisma.storeListing.create({
       data: {

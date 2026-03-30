@@ -51,10 +51,23 @@ export async function POST(req: NextRequest) {
 
     if (total <= 0) {
       const startsAt = new Date();
-      const endsAt = calcListingEndsAt(startsAt, application.billingPeriod);
+      const endsAt = calcListingEndsAt(
+        startsAt,
+        application.billingPeriod,
+        price === 0
+      );
+      const hasActiveListing = await prisma.storeListing.findFirst({
+        where: {
+          storeId: application.storeId,
+          status: "ACTIVE",
+          endsAt: { gt: new Date() },
+          paidAt: { not: null },
+        },
+        select: { id: true },
+      });
 
-      await prisma.$transaction([
-        prisma.storeListing.create({
+      await prisma.$transaction(async (tx) => {
+        await tx.storeListing.create({
           data: {
             storeId: application.storeId,
             applicationId: application.id,
@@ -69,12 +82,15 @@ export async function POST(req: NextRequest) {
             taxAmount: 0,
             paidAt: new Date(),
           },
-        }),
-        prisma.store.update({
-          where: { id: application.storeId },
-          data: { status: "AWAITING_PAYMENT" },
-        }),
-      ]);
+        });
+
+        if (!hasActiveListing) {
+          await tx.store.update({
+            where: { id: application.storeId },
+            data: { status: "AWAITING_PAYMENT" },
+          });
+        }
+      });
 
       revalidatePath("/store-admin");
       revalidatePath(`/store/${application.storeId}`);

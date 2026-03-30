@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { PublicPageBlock } from "@/lib/public-page-blocks";
 import { updateStorePublicPageContent, uploadStorePageContentImage } from "./actions";
+import { ImageCropFileInput } from "./image-crop-file-input";
 
 type LocalBlock = PublicPageBlock & { _key: string };
 
@@ -18,7 +19,15 @@ function toLocal(blocks: PublicPageBlock[]): LocalBlock[] {
 }
 
 function stripKeys(blocks: LocalBlock[]): PublicPageBlock[] {
-  return blocks.map(({ _key: _k, ...rest }) => rest);
+  return blocks.map((block) => {
+    if (block.type === "heading") {
+      return { type: "heading", level: block.level, text: block.text };
+    }
+    if (block.type === "paragraph") {
+      return { type: "paragraph", text: block.text };
+    }
+    return { type: "image", url: block.url, alt: block.alt };
+  });
 }
 
 type Props = {
@@ -31,8 +40,6 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
   const [blocks, setBlocks] = useState<LocalBlock[]>(() => toLocal(initialBlocks));
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const pendingImageIndex = useRef<number | null>(null);
 
   const jsonPayload = useMemo(() => JSON.stringify(stripKeys(blocks)), [blocks]);
 
@@ -76,20 +83,9 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
     );
   }, []);
 
-  const triggerImagePick = (index: number) => {
-    pendingImageIndex.current = index;
-    fileRef.current?.click();
-  };
-
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    const idx = pendingImageIndex.current;
-    pendingImageIndex.current = null;
-    if (!file || idx == null) return;
-
+  const uploadImageForBlock = useCallback(async (index: number, file: File) => {
     setUploadError(null);
-    setUploadingIndex(idx);
+    setUploadingIndex(index);
     const fd = new FormData();
     fd.set("storeId", storeId);
     fd.set("photo", file);
@@ -99,19 +95,11 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
       setUploadError(result.error);
       return;
     }
-    patchBlock(idx, { url: result.url } as Partial<Extract<LocalBlock, { type: "image" }>>);
-  };
+    patchBlock(index, { url: result.url } as Partial<Extract<LocalBlock, { type: "image" }>>);
+  }, [patchBlock, storeId]);
 
   return (
     <div className="space-y-4">
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
-        className="hidden"
-        onChange={onFileChange}
-      />
-
       <p className="text-xs text-slate-500">
         見出し・本文・画像でお知らせを組み立て、公開店舗ページの地図直下に表示できます。画像はこの画面からアップロードしてください。
       </p>
@@ -130,18 +118,7 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
           disabled={disabled}
           onClick={() => addBlock("heading")}
         >
-          見出し（大）
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled}
-          onClick={() => {
-            setBlocks((prev) => [...prev, { type: "heading", level: 3, text: "", _key: newKey() }]);
-          }}
-        >
-          見出し（小）
+          見出し
         </Button>
         <Button
           type="button"
@@ -176,8 +153,7 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
             >
               <div className="flex flex-wrap items-center gap-2 justify-between">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {block.type === "heading" && block.level === 2 && "見出し（大）"}
-                  {block.type === "heading" && block.level === 3 && "見出し（小）"}
+                  {block.type === "heading" && "見出し"}
                   {block.type === "paragraph" && "本文"}
                   {block.type === "image" && "画像"}
                 </span>
@@ -237,20 +213,24 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
               {block.type === "image" && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2 items-center">
-                    <Button
-                      type="button"
-                      size="sm"
+                    <ImageCropFileInput
                       disabled={disabled || uploadingIndex === index}
-                      onClick={() => triggerImagePick(index)}
-                    >
-                      {uploadingIndex === index ? "アップロード中…" : "画像をアップロード"}
-                    </Button>
+                      mode="flexible"
+                      onCroppedFile={(file) => uploadImageForBlock(index, file)}
+                      className="max-w-xs"
+                    />
                     {block.url ? (
                       <span className="text-xs text-emerald-600 truncate max-w-[200px]">設定済み</span>
                     ) : (
                       <span className="text-xs text-amber-600">未アップロード</span>
                     )}
                   </div>
+                  <p className="text-xs text-slate-500">
+                    選択後にトリミング画面が開きます。比率は自由に調整できます。
+                  </p>
+                  {uploadingIndex === index ? (
+                    <p className="text-xs text-rose-700">アップロード中…</p>
+                  ) : null}
                   {block.url ? (
                     <div className="relative rounded-md border border-slate-200 bg-slate-50 overflow-hidden max-h-48">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -275,6 +255,7 @@ export function PublicPageBlocksEditor({ storeId, initialBlocks, disabled }: Pro
 
       <form action={updateStorePublicPageContent} className="flex justify-end pt-2">
         <input type="hidden" name="storeId" value={storeId} />
+        <input type="hidden" name="tab" value="pagecontent" />
         <input type="hidden" name="blocksJson" value={jsonPayload} readOnly />
         <Button type="submit" disabled={disabled}>
           お知らせを保存する

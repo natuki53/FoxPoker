@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate, formatPrice, BILLING_PERIOD_LABELS, getPlanPrice } from "@/lib/utils";
+import {
+  formatDate,
+  formatPrice,
+  getBillingPeriodLabel,
+  getPlanPrice,
+} from "@/lib/utils";
 import { approveApplication, rejectApplication } from "../actions";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +48,7 @@ export default async function ApplicationsPage() {
           {applications.map((app) => {
             const st = STATUS_MAP[app.status] || STATUS_MAP.SUBMITTED;
             const price = getPlanPrice(app.plan, app.billingPeriod);
+            const applicationTypeLabel = price === 0 ? "掲載審査" : "有料プラン";
             const isPending = app.status === "SUBMITTED" || app.status === "REVIEWING";
 
             return (
@@ -51,14 +58,22 @@ export default async function ApplicationsPage() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-slate-800">
+                    <Link href={`/admin/applications/${app.id}`} className="font-semibold text-slate-800 hover:text-orange-600">
                       {app.store.name}
-                    </h3>
+                    </Link>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {app.store.prefecture.name} {app.store.city} {app.store.address}
                     </p>
                   </div>
-                  <Badge variant={st.variant}>{st.label}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={st.variant}>{st.label}</Badge>
+                    <Link
+                      href={`/admin/applications/${app.id}`}
+                      className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+                    >
+                      詳細 →
+                    </Link>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
@@ -72,13 +87,14 @@ export default async function ApplicationsPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-slate-500 text-xs">プラン</p>
-                    <p className="text-slate-800">{app.plan.name}</p>
+                    <p className="text-slate-500 text-xs">申請種別</p>
+                    <p className="text-slate-800">{applicationTypeLabel}</p>
+                    <p className="text-xs text-slate-400">{app.plan.name}</p>
                   </div>
                   <div>
                     <p className="text-slate-500 text-xs">期間・金額</p>
                     <p className="text-slate-800">
-                      {BILLING_PERIOD_LABELS[app.billingPeriod]}
+                      {getBillingPeriodLabel(app.billingPeriod, price)}
                     </p>
                     <p className="text-xs text-slate-400">
                       {formatPrice(price)}（税抜）

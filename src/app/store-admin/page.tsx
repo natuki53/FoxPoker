@@ -6,15 +6,16 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate, formatPrice, BILLING_PERIOD_LABELS, getPlanPrice } from "@/lib/utils";
+import { formatDate, formatPrice, getBillingPeriodLabel, getPlanPrice } from "@/lib/utils";
 import {
   hasApprovedApplicationWithoutListing,
   storeOwnerStoreCardBadge,
 } from "@/lib/store-status-ui";
-import { Store, Plus, CreditCard } from "lucide-react";
+import { Store, Plus, CreditCard, Megaphone } from "lucide-react";
 import { PayButton } from "./pay-button";
 import { PublishStoreButton } from "./publish-store-button";
 import { UnpublishStoreButton } from "./unpublish-store-button";
+import { DeleteStoreButton } from "./delete-store-button";
 
 const APP_STATUS_MAP: Record<string, { label: string; variant: "success" | "warning" | "danger" | "default" }> = {
   SUBMITTED: { label: "審査待ち", variant: "warning" },
@@ -24,13 +25,30 @@ const APP_STATUS_MAP: Record<string, { label: string; variant: "success" | "warn
   CANCELLED: { label: "キャンセル", variant: "default" },
 };
 
-export default async function StoreAdminDashboard() {
+const PENDING_STORE_BADGE_BY_APP_STATUS: Record<
+  string,
+  { label: string; variant: "warning" | "danger" | "default" }
+> = {
+  SUBMITTED: { label: "審査待ち", variant: "warning" },
+  REVIEWING: { label: "審査中", variant: "warning" },
+  REJECTED: { label: "却下", variant: "danger" },
+  CANCELLED: { label: "キャンセル", variant: "default" },
+};
+
+type DashboardProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function StoreAdminDashboard({ searchParams }: DashboardProps) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/login?callbackUrl=/store-admin");
 
   const userId = session.user.id;
+  const query = searchParams ? await searchParams : {};
+  const saved = typeof query.saved === "string" ? query.saved : undefined;
+  const flashError = typeof query.error === "string" ? query.error : undefined;
 
-  const [stores, applications] = await Promise.all([
+  const [stores, applications, ownerAccount] = await Promise.all([
     prisma.store.findMany({
       where: { ownerUserId: userId },
       include: {
@@ -55,17 +73,43 @@ export default async function StoreAdminDashboard() {
       include: { store: true, plan: true, listing: { select: { id: true } } },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    }),
   ]);
+  const accountHasPassword = !!ownerAccount?.passwordHash;
+  const visibleStores = stores.filter((store) => {
+    const latestAppForStore = applications.find((application) => application.storeId === store.id);
+    return !(store.status === "PENDING" && latestAppForStore?.status === "REJECTED");
+  });
 
   return (
     <div>
+      {saved === "store_deleted" && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          店舗を削除しました。
+        </div>
+      )}
+      {flashError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {flashError}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">ダッシュボード</h1>
-        <Link href="/store-admin/apply">
-          <Button size="sm">
-            <Plus size={16} /> 新規掲載申請
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/store-admin/apply">
+            <Button size="sm">
+              <Plus size={16} /> 新規掲載申請
+            </Button>
+          </Link>
+          <Link href="/store-admin/upgrade">
+            <Button size="sm" variant="outline">
+              <Megaphone size={16} /> 有料プラン申請
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stores */}
@@ -74,7 +118,7 @@ export default async function StoreAdminDashboard() {
           <Store size={18} /> あなたの店舗
         </h2>
 
-        {stores.length === 0 ? (
+        {visibleStores.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
             <p className="text-slate-400 mb-4">まだ登録された店舗はありません</p>
             <Link href="/store-admin/apply">
@@ -83,7 +127,7 @@ export default async function StoreAdminDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {stores.map((store) => {
+            {visibleStores.map((store) => {
               const activeListing = store.listings[0];
               const listingIsFree =
                 activeListing &&
@@ -93,7 +137,12 @@ export default async function StoreAdminDashboard() {
               const appsForStore = applications.filter(
                 (a) => a.storeId === store.id
               );
-              const st = storeOwnerStoreCardBadge(
+              const latestAppForStore = appsForStore[0];
+              const pendingStoreBadge =
+                store.status === "PENDING" && latestAppForStore
+                  ? PENDING_STORE_BADGE_BY_APP_STATUS[latestAppForStore.status]
+                  : undefined;
+              const st = pendingStoreBadge ?? storeOwnerStoreCardBadge(
                 store.status,
                 hasApprovedApplicationWithoutListing(appsForStore),
                 activeListing
@@ -129,7 +178,7 @@ export default async function StoreAdminDashboard() {
                           プラン: {activeListing.plan.name}
                         </span>
                         <span>
-                          掲載期限: {formatDate(activeListing.endsAt)}
+                          掲載期限: {listingIsFree ? "無期限（無料プラン）" : formatDate(activeListing.endsAt)}
                         </span>
                       </>
                     )}
@@ -158,6 +207,11 @@ export default async function StoreAdminDashboard() {
                         <UnpublishStoreButton
                           storeId={store.id}
                           storeName={store.name}
+                        />
+                        <DeleteStoreButton
+                          storeId={store.id}
+                          storeName={store.name}
+                          accountHasPassword={accountHasPassword}
                         />
                       </>
                     )}
@@ -194,6 +248,7 @@ export default async function StoreAdminDashboard() {
               const as_ = APP_STATUS_MAP[app.status] || APP_STATUS_MAP.SUBMITTED;
               const price = getPlanPrice(app.plan, app.billingPeriod);
               const isFreePlan = price === 0;
+              const applicationTypeLabel = isFreePlan ? "掲載審査申請" : "有料プラン申請";
               const isPaid = Boolean(app.listing);
               return (
                 <div
@@ -203,11 +258,16 @@ export default async function StoreAdminDashboard() {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-medium text-slate-800">
-                        {app.store.name} — {app.plan.name}プラン
+                        {app.store.name} — {applicationTypeLabel}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {BILLING_PERIOD_LABELS[app.billingPeriod]} ·{" "}
-                        {formatPrice(price)}（税抜）
+                        {isFreePlan
+                          ? "無料掲載（FREE）"
+                          : `${app.plan.name} / ${getBillingPeriodLabel(
+                              app.billingPeriod,
+                              price
+                            )}`}{" "}
+                        · {formatPrice(price)}（税抜）
                       </p>
                     </div>
                     <Badge variant={as_.variant}>{as_.label}</Badge>

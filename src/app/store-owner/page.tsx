@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BarChart3, CheckCircle2, ChevronRight, Megaphone, MessageSquareMore, Trophy } from "lucide-react";
+import { ensureListingPlans } from "@/lib/listing-plans";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/utils";
@@ -11,8 +12,9 @@ export const metadata: Metadata = { title: "掲載案内" };
 const FLOW_STEPS = [
   "フォーム入力",
   "運営チーム審査（通常3〜5営業日）",
-  "承認後、無料プランは即時反映・有料プランは決済リンク送付",
-  "掲載準備完了後、公開ボタンで掲載開始",
+  "承認後、無料掲載の準備完了",
+  "公開ボタンで掲載開始（無料）",
+  "必要に応じて管理画面から有料プランを申請",
 ];
 
 const MERITS = [
@@ -39,6 +41,7 @@ const MERITS = [
 ];
 
 export default async function StoreOwnerPage() {
+  await ensureListingPlans();
   const plans = await prisma.listingPlan.findMany({
     where: { isActive: true },
     orderBy: { rank: "desc" },
@@ -150,10 +153,11 @@ export default async function StoreOwnerPage() {
                     )}
                   </ul>
                   <Link
-                    href="/store-admin/apply"
+                    href={plan.price1month === 0 ? "/store-admin/apply" : "/store-admin/upgrade"}
                     className="mt-4 inline-flex items-center gap-1 text-sm text-rose-700 hover:text-rose-800 font-medium"
                   >
-                    このプランで申請する <ChevronRight size={14} />
+                    {plan.price1month === 0 ? "無料審査を申請する" : "有料プランを申請する"}{" "}
+                    <ChevronRight size={14} />
                   </Link>
                 </article>
               ))}
@@ -180,7 +184,7 @@ export default async function StoreOwnerPage() {
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold text-slate-900 mb-3">まずは無料審査からはじめましょう</h2>
           <p className="text-slate-600 mb-6">
-            店舗情報と希望プランを入力すると、審査後に無料プランは店舗ページ掲載の準備へ、そのまま進めます。有料プランは露出強化オプションとして、決済後に該当機能が有効になります。
+            まずは店舗実在確認の審査を通過して無料掲載を開始できます。宣伝用の有料プランは、承認後に管理画面から別フォームで申請できます。
           </p>
           <Link href="/store-admin/apply">
             <Button size="lg">掲載申請フォームへ進む</Button>

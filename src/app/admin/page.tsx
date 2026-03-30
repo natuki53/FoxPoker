@@ -6,11 +6,19 @@ import {
 } from "@/lib/store-status-ui";
 
 export const dynamic = "force-dynamic";
-import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { approveApplication, rejectApplication } from "./actions";
 import { Users, Store, FileCheck, CreditCard } from "lucide-react";
 import Link from "next/link";
+
+const PENDING_STORE_BADGE_BY_APP_STATUS: Record<
+  string,
+  { label: string; variant: "warning" | "danger" | "default" }
+> = {
+  SUBMITTED: { label: "審査待ち", variant: "warning" },
+  REVIEWING: { label: "審査中", variant: "warning" },
+  REJECTED: { label: "却下", variant: "danger" },
+  CANCELLED: { label: "キャンセル", variant: "default" },
+};
 
 export default async function AdminDashboard() {
   const [
@@ -46,6 +54,8 @@ export default async function AdminDashboard() {
             status: true,
             listing: { select: { id: true } },
           },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
         listings: {
           where: {
@@ -132,11 +142,12 @@ export default async function AdminDashboard() {
         ) : (
           <div className="space-y-3">
             {recentApplications.map((app) => (
-              <div
+              <Link
                 key={app.id}
-                className="bg-white rounded-xl border border-slate-200 p-4"
+                href={`/admin/applications/${app.id}`}
+                className="block bg-white rounded-xl border border-slate-200 p-4 hover:border-orange-300 hover:shadow-sm transition-all"
               >
-                <div className="flex items-start justify-between mb-2">
+                <div className="flex items-start justify-between mb-2 gap-3">
                   <div>
                     <p className="font-medium text-slate-800">
                       {app.store.name}
@@ -155,27 +166,10 @@ export default async function AdminDashboard() {
                     {app.status === "SUBMITTED" ? "未審査" : "審査中"}
                   </Badge>
                 </div>
-
-                <div className="flex gap-2 mt-3">
-                  <form action={approveApplication}>
-                    <input type="hidden" name="id" value={app.id} />
-                    <Button type="submit" size="sm">
-                      承認
-                    </Button>
-                  </form>
-                  <form action={rejectApplication}>
-                    <input type="hidden" name="id" value={app.id} />
-                    <input
-                      type="hidden"
-                      name="reason"
-                      value="審査基準を満たしていないため"
-                    />
-                    <Button type="submit" size="sm" variant="danger">
-                      却下
-                    </Button>
-                  </form>
-                </div>
-              </div>
+                <p className="mt-3 inline-flex items-center text-sm font-medium text-orange-500">
+                  詳細を確認して審査する →
+                </p>
+              </Link>
             ))}
           </div>
         )}
@@ -216,11 +210,18 @@ export default async function AdminDashboard() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {recentStores.map((store) => {
-                const st = adminStoreTableBadge(
-                  store.status,
-                  hasApprovedApplicationWithoutListing(store.applications),
-                  store.listings.length > 0
-                );
+                const latestAppForStore = store.applications[0];
+                const pendingStoreBadge =
+                  store.status === "PENDING" && latestAppForStore
+                    ? PENDING_STORE_BADGE_BY_APP_STATUS[latestAppForStore.status]
+                    : undefined;
+                const st =
+                  pendingStoreBadge ??
+                  adminStoreTableBadge(
+                    store.status,
+                    hasApprovedApplicationWithoutListing(store.applications),
+                    store.listings.length > 0
+                  );
                 return (
                   <tr key={store.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium text-slate-800">

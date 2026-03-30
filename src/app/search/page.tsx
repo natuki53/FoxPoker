@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Search, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { ensureMasterPrefectures } from "@/lib/prefectures";
 import { PlanBadge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ export default async function SearchPage({
 
   if (prefecture) where.prefectureCode = prefecture;
 
+  await ensureMasterPrefectures();
   const [stores, total, prefectures] = await Promise.all([
     prisma.store.findMany({
       where,

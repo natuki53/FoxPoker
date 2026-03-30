@@ -12,22 +12,13 @@ export function StorePublicBlocks({ storeId, storeName, blocks }: Props) {
 
   return (
     <section className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-      <h2 className="text-lg font-bold text-slate-800 mb-4">お知らせ</h2>
       <div className="store-public-blocks">
         {blocks.map((block, index) => {
           if (block.type === "heading") {
-            const Tag = block.level === 2 ? "h3" : "h4";
             return (
-              <Tag
-                key={index}
-                className={
-                  block.level === 2
-                    ? "text-xl font-bold mt-6 mb-3 first:mt-0"
-                    : "text-lg font-semibold mt-5 mb-2 first:mt-0"
-                }
-              >
+              <h3 key={index} className="text-xl font-bold mt-6 mb-3 first:mt-0">
                 {block.text}
-              </Tag>
+              </h3>
             );
           }
           if (block.type === "paragraph") {

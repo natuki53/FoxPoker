@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getPlanPrice } from "@/lib/utils";
 import {
   adminStoreTableBadge,
   hasApprovedApplicationWithoutListing,
@@ -14,6 +14,16 @@ import {
 } from "../actions";
 import { MarkPaymentCompleteButton } from "../mark-payment-complete-button";
 import Link from "next/link";
+
+const PENDING_STORE_BADGE_BY_APP_STATUS: Record<
+  string,
+  { label: string; variant: "warning" | "danger" | "default" }
+> = {
+  SUBMITTED: { label: "審査待ち", variant: "warning" },
+  REVIEWING: { label: "審査中", variant: "warning" },
+  REJECTED: { label: "却下", variant: "danger" },
+  CANCELLED: { label: "キャンセル", variant: "default" },
+};
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +52,8 @@ export default async function AdminStoresPage() {
           status: true,
           listing: { select: { id: true } },
         },
+        orderBy: { createdAt: "desc" },
+        take: 1,
       },
       infoEditRequests: {
         where: { status: "PENDING" },
@@ -95,12 +107,22 @@ export default async function AdminStoresPage() {
                 const unpaidApproved = hasApprovedApplicationWithoutListing(
                   store.applications
                 );
+                const latestAppForStore = store.applications[0];
                 const activeListing = store.listings[0];
-                const st = adminStoreTableBadge(
-                  store.status,
-                  unpaidApproved,
-                  Boolean(activeListing)
-                );
+                const listingIsFree =
+                  activeListing &&
+                  getPlanPrice(activeListing.plan, activeListing.billingPeriod) === 0;
+                const pendingStoreBadge =
+                  store.status === "PENDING" && latestAppForStore
+                    ? PENDING_STORE_BADGE_BY_APP_STATUS[latestAppForStore.status]
+                    : undefined;
+                const st =
+                  pendingStoreBadge ??
+                  adminStoreTableBadge(
+                    store.status,
+                    unpaidApproved,
+                    Boolean(activeListing)
+                  );
                 const pendingInfoEdit = store.infoEditRequests[0];
                 return (
                   <tr key={store.id} className="hover:bg-slate-50">
@@ -131,7 +153,9 @@ export default async function AdminStoresPage() {
                           {activeListing.plan.name}
                           <br />
                           <span className="text-xs text-slate-400">
-                            〜{formatDate(activeListing.endsAt)}
+                            {listingIsFree
+                              ? "無期限（無料プラン）"
+                              : `〜${formatDate(activeListing.endsAt)}`}
                           </span>
                         </span>
                       ) : (

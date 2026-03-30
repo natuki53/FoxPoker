@@ -13,13 +13,6 @@ const applySchema = z.object({
   address: z.string().min(1, "住所は必須です"),
   postalCode: z.string().min(1, "郵便番号は必須です"),
   phone: z.string().optional(),
-  planId: z.string().min(1, "プランを選択してください"),
-  billingPeriod: z.enum([
-    "ONE_MONTH",
-    "THREE_MONTHS",
-    "SIX_MONTHS",
-    "TWELVE_MONTHS",
-  ]),
 });
 
 export async function submitApplication(
@@ -37,10 +30,23 @@ export async function submitApplication(
 
   const data = parsed.data;
 
-  const plan = await prisma.listingPlan.findUnique({
-    where: { id: data.planId },
+  const freePlan = await prisma.listingPlan.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        { name: "FREE" },
+        {
+          rank: 0,
+          price1month: 0,
+          price3months: 0,
+          price6months: 0,
+          price12months: 0,
+        },
+      ],
+    },
+    orderBy: { sortOrder: "asc" },
   });
-  if (!plan) return { error: "選択されたプランが見つかりません。" };
+  if (!freePlan) return { error: "無料掲載プランが見つかりません。" };
 
   let storeCreated = false;
   try {
@@ -62,8 +68,8 @@ export async function submitApplication(
       data: {
         storeId: store.id,
         applicantUserId: session.user.id,
-        planId: data.planId,
-        billingPeriod: data.billingPeriod,
+        planId: freePlan.id,
+        billingPeriod: "ONE_MONTH",
         status: "SUBMITTED",
       },
     });

@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { ensureMasterPrefectures } from "@/lib/prefectures";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "エリアから探す" };
 
 export default async function AreaPage() {
+  await ensureMasterPrefectures();
   const prefectures = await prisma.prefecture.findMany({
     orderBy: { code: "asc" },
     include: {

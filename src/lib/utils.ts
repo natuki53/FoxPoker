@@ -30,7 +30,17 @@ export function formatDateTime(date: Date | string): string {
   }).format(new Date(date));
 }
 
-export function calcListingEndsAt(startsAt: Date, period: string): Date {
+const NO_EXPIRY_LISTING_END_AT_ISO = "9999-12-31T23:59:59.999Z";
+
+export function calcListingEndsAt(
+  startsAt: Date,
+  period: string,
+  isFreePlan = false
+): Date {
+  if (isFreePlan) {
+    return new Date(NO_EXPIRY_LISTING_END_AT_ISO);
+  }
+
   const date = new Date(startsAt);
   switch (period) {
     case "ONE_MONTH":
@@ -73,5 +83,12 @@ export const BILLING_PERIOD_LABELS: Record<string, string> = {
   SIX_MONTHS: "6ヶ月（10%割引）",
   TWELVE_MONTHS: "12ヶ月（15%割引）",
 };
+
+export function getBillingPeriodLabel(period: string, price: number): string {
+  if (price === 0) {
+    return "無期限（無料プラン）";
+  }
+  return BILLING_PERIOD_LABELS[period] || period;
+}
 
 export const DAY_OF_WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];

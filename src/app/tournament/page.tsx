@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, Filter, MapPin, Search, Trophy } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ensureMasterPrefectures } from "@/lib/prefectures";
 import { PlanBadge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 
@@ -10,13 +11,6 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "トーナメント情報" };
 
 const ITEMS_PER_PAGE = 12;
-
-function parseNumber(value: string | undefined): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) return null;
-  return parsed;
-}
 
 function parseDateRange(value: string) {
   if (!value) return null;
@@ -37,8 +31,6 @@ export default async function TournamentPage({
   const prefecture = typeof params.prefecture === "string" ? params.prefecture : "";
   const gameType = typeof params.gameType === "string" ? params.gameType : "";
   const date = typeof params.date === "string" ? params.date : "";
-  const buyinMin = parseNumber(typeof params.buyinMin === "string" ? params.buyinMin : undefined);
-  const buyinMax = parseNumber(typeof params.buyinMax === "string" ? params.buyinMax : undefined);
   const page = typeof params.page === "string" ? Math.max(1, parseInt(params.page, 10) || 1) : 1;
 
   const storeFilter: Prisma.StoreWhereInput = {
@@ -60,11 +52,7 @@ export default async function TournamentPage({
 
   if (gameType) where.gameTypeId = gameType;
 
-  const buyinFilter: Prisma.IntFilter = {};
-  if (buyinMin !== null) buyinFilter.gte = buyinMin;
-  if (buyinMax !== null) buyinFilter.lte = buyinMax;
-  if (Object.keys(buyinFilter).length > 0) where.buyinAmount = buyinFilter;
-
+  await ensureMasterPrefectures();
   const [tournaments, total, prefectures, gameTypes, highlightRows] = await Promise.all([
     prisma.tournament.findMany({
       where,
@@ -111,8 +99,6 @@ export default async function TournamentPage({
     if (prefecture) sp.set("prefecture", prefecture);
     if (gameType) sp.set("gameType", gameType);
     if (date) sp.set("date", date);
-    if (buyinMin !== null) sp.set("buyinMin", String(buyinMin));
-    if (buyinMax !== null) sp.set("buyinMax", String(buyinMax));
     if (nextPage > 1) sp.set("page", String(nextPage));
     return `/tournament?${sp.toString()}`;
   }
@@ -124,13 +110,13 @@ export default async function TournamentPage({
           <Trophy size={24} className="text-rose-700" /> トーナメント情報
         </h1>
         <p className="text-sm text-slate-600 mt-1">
-          開催予定のトーナメントを、エリア・日付・バイイン金額で検索できます。
+          開催予定のトーナメントを、エリア・日付で検索できます。
         </p>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <form action="/tournament" className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             <select
               name="prefecture"
               defaultValue={prefecture}
@@ -159,22 +145,6 @@ export default async function TournamentPage({
               name="date"
               type="date"
               defaultValue={date}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-            />
-            <input
-              name="buyinMin"
-              type="number"
-              min={0}
-              defaultValue={buyinMin ?? ""}
-              placeholder="最小BI"
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-            />
-            <input
-              name="buyinMax"
-              type="number"
-              min={0}
-              defaultValue={buyinMax ?? ""}
-              placeholder="最大BI"
               className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
             />
           </div>

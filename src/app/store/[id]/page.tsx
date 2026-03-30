@@ -169,6 +169,15 @@ export default async function StoreDetailPage({ params }: Props) {
             </div>
           )}
 
+          {store.description && (
+            <div className="pt-1 border-t border-slate-100">
+              <h2 className="text-sm font-bold text-slate-800 mb-2">店舗紹介</h2>
+              <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                {store.description}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2 text-sm text-slate-600">
             <p className="flex items-start gap-2">
               <MapPin size={16} className="text-slate-400 flex-shrink-0 mt-0.5" />
@@ -238,16 +247,6 @@ export default async function StoreDetailPage({ params }: Props) {
           </div>
         </div>
       </div>
-
-      {/* Description */}
-      {store.description && (
-        <section className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-          <h2 className="text-lg font-bold text-slate-800 mb-3">店舗紹介</h2>
-          <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
-            {store.description}
-          </p>
-        </section>
-      )}
 
       <section className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <h2 className="text-lg font-bold text-slate-800 mb-4">アクセス・営業時間</h2>
@@ -330,6 +329,16 @@ export default async function StoreDetailPage({ params }: Props) {
                 key={event.id}
                 className="p-4 bg-slate-50 rounded-lg border border-slate-100"
               >
+                {event.imageUrl && (
+                  <div className="mb-3 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={event.imageUrl}
+                      alt={`${event.title} の画像`}
+                      className="h-44 w-full object-cover"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <p className="font-medium text-slate-800">{event.title}</p>
                   {event.schedule && (

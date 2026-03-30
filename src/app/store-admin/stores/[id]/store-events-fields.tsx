@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ImageCropFileInput } from "./image-crop-file-input";
 
 const MAX_EVENT_ROWS = 40;
 
@@ -11,6 +12,7 @@ export type StoreEventFormSeed = {
   title: string;
   schedule: string | null;
   description: string | null;
+  imageUrl: string | null;
   linkLabel: string | null;
   linkUrl: string | null;
   isActive: boolean;
@@ -23,6 +25,7 @@ type RowModel = {
     title: string;
     schedule: string;
     description: string;
+    imageUrl: string;
     linkLabel: string;
     linkUrl: string;
     isActive: boolean;
@@ -34,6 +37,7 @@ function emptySeed(): RowModel["seed"] {
     title: "",
     schedule: "",
     description: "",
+    imageUrl: "",
     linkLabel: "",
     linkUrl: "",
     isActive: true,
@@ -45,6 +49,7 @@ function seedFromEvent(e: StoreEventFormSeed): RowModel["seed"] {
     title: e.title,
     schedule: e.schedule ?? "",
     description: e.description ?? "",
+    imageUrl: e.imageUrl ?? "",
     linkLabel: e.linkLabel ?? "",
     linkUrl: e.linkUrl ?? "",
     isActive: e.isActive,
@@ -179,6 +184,44 @@ export function StoreEventsFields({
                 disabled={disabled}
                 className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm resize-y"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">
+                イベント画像（任意）
+              </label>
+              <ImageCropFileInput
+                name={`eventImage_${index}`}
+                disabled={disabled}
+                mode="fixed"
+                fixedAspectRatio={16 / 9}
+                fixedAspectLabel="16:9"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                選択後にトリミング画面が開きます（固定比率 16:9）。
+              </p>
+              {row.seed.imageUrl ? (
+                <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={row.seed.imageUrl}
+                    alt={`${row.seed.title || "イベント"} の登録画像`}
+                    className="h-28 w-full rounded object-cover"
+                  />
+                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      name={`eventImageClear_${index}`}
+                      disabled={disabled}
+                    />
+                    既存画像を削除する
+                  </label>
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  画像未登録。必要な場合はファイルを選択してください。
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
