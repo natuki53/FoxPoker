@@ -61,9 +61,15 @@ interface ReviewFormProps {
   storeId: string;
   isLoggedIn: boolean;
   hasReviewed: boolean;
+  loginCallbackUrl: string;
 }
 
-export function ReviewForm({ storeId, isLoggedIn, hasReviewed }: ReviewFormProps) {
+export function ReviewForm({
+  storeId,
+  isLoggedIn,
+  hasReviewed,
+  loginCallbackUrl,
+}: ReviewFormProps) {
   const [state, formAction, isPending] = useActionState<ReviewFormState, FormData>(
     submitReview,
     { status: "idle" }
@@ -82,7 +88,7 @@ export function ReviewForm({ storeId, isLoggedIn, hasReviewed }: ReviewFormProps
   if (!isLoggedIn) {
     return (
       <a
-        href={`/auth/login?callbackUrl=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "")}`}
+        href={`/auth/login?callbackUrl=${encodeURIComponent(loginCallbackUrl)}`}
         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-sm font-medium hover:bg-orange-100 transition-colors"
       >
         <Star size={15} /> ログインして口コミを書く

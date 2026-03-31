@@ -455,6 +455,7 @@ export default async function StoreDetailPage({ params }: Props) {
             storeId={store.id}
             isLoggedIn={!!userId}
             hasReviewed={!!existingReview}
+            loginCallbackUrl={`/store/${id}`}
           />
         </div>
 
