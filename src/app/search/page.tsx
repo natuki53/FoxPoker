@@ -1,14 +1,30 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Search, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, MapPin, ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { ensureMasterPrefectures } from "@/lib/prefectures";
 import { PlanBadge } from "@/components/ui/badge";
+import { FavoriteButton } from "@/app/store/[id]/favorite-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "店舗検索" };
 
 const ITEMS_PER_PAGE = 12;
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "新着順" },
+  { value: "reviews", label: "口コミ数順" },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]["value"];
+
+function buildOrderBy(sort: SortValue) {
+  if (sort === "reviews") {
+    return [{ reviews: { _count: "desc" as const } }, { createdAt: "desc" as const }];
+  }
+  return [{ createdAt: "desc" as const }];
+}
 
 export default async function SearchPage({
   searchParams,
@@ -19,6 +35,11 @@ export default async function SearchPage({
   const keyword = typeof params.keyword === "string" ? params.keyword : "";
   const prefecture = typeof params.prefecture === "string" ? params.prefecture : "";
   const page = typeof params.page === "string" ? Math.max(1, parseInt(params.page) || 1) : 1;
+  const sort: SortValue =
+    params.sort === "reviews" ? "reviews" : "newest";
+
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   const where: Record<string, unknown> = {
     status: "APPROVED",
@@ -39,7 +60,8 @@ export default async function SearchPage({
   if (prefecture) where.prefectureCode = prefecture;
 
   await ensureMasterPrefectures();
-  const [stores, total, prefectures] = await Promise.all([
+
+  const [stores, total, prefectures, favoritedStoreIds] = await Promise.all([
     prisma.store.findMany({
       where,
       include: {
@@ -58,20 +80,27 @@ export default async function SearchPage({
         },
         _count: { select: { reviews: { where: { status: "ACTIVE" } } } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: buildOrderBy(sort),
       skip: (page - 1) * ITEMS_PER_PAGE,
       take: ITEMS_PER_PAGE,
     }),
     prisma.store.count({ where }),
     prisma.prefecture.findMany({ orderBy: { code: "asc" } }),
+    userId
+      ? prisma.favoriteStore
+          .findMany({ where: { userId }, select: { storeId: true } })
+          .then((rows) => new Set(rows.map((r) => r.storeId)))
+      : Promise.resolve(new Set<string>()),
   ]);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
-  function buildUrl(p: number) {
+  function buildUrl(p: number, overrides?: { sort?: string }) {
     const sp = new URLSearchParams();
     if (keyword) sp.set("keyword", keyword);
     if (prefecture) sp.set("prefecture", prefecture);
+    const s = overrides?.sort ?? sort;
+    if (s !== "newest") sp.set("sort", s);
     if (p > 1) sp.set("page", String(p));
     return `/search?${sp.toString()}`;
   }
@@ -109,16 +138,36 @@ export default async function SearchPage({
                 </option>
               ))}
             </select>
+            {/* sort は hidden で引き継ぎ */}
+            <input type="hidden" name="sort" value={sort} />
           </div>
         </form>
       </div>
 
-      {/* Result Count */}
+      {/* Result Count + Sort */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-600">
           {keyword && <span className="font-medium">「{keyword}」の</span>}
           検索結果：<span className="font-semibold text-slate-800">{total}</span>件
         </p>
+        <div className="flex items-center gap-2">
+          <ArrowUpDown size={14} className="text-slate-400" />
+          <div className="flex gap-1">
+            {SORT_OPTIONS.map((opt) => (
+              <Link
+                key={opt.value}
+                href={buildUrl(1, { sort: opt.value })}
+                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                  sort === opt.value
+                    ? "bg-orange-500 text-white border-orange-500"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Results */}
@@ -134,45 +183,54 @@ export default async function SearchPage({
             const planRank = store.listings[0]?.plan.rank ?? 1;
             const photo = store.photos[0];
             return (
-              <Link
-                key={store.id}
-                href={`/store/${store.id}`}
-                className="bg-white rounded-xl border border-slate-200 hover:border-orange-300 hover:shadow-md transition-all overflow-hidden"
-              >
-                <div className="relative h-40 bg-slate-100">
-                  {photo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={photo.url}
-                      alt={photo.altText ?? store.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl">🃏</div>
-                  )}
-                  <div className="absolute top-2 right-2">
-                    <PlanBadge rank={planRank} />
-                  </div>
-                </div>
-                <div className="p-4">
-                  <p className="font-semibold text-slate-800 truncate">{store.name}</p>
-                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                    <MapPin size={12} /> {store.prefecture.name} · {store.city}
-                  </p>
-                  {store.events.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {store.events.map((event) => (
-                        <p key={event.id} className="text-xs text-slate-600 truncate">
-                          {event.schedule ? `${event.schedule} ` : ""}{event.title}
-                        </p>
-                      ))}
+              <div key={store.id} className="relative">
+                <Link
+                  href={`/store/${store.id}`}
+                  className="block bg-white rounded-xl border border-slate-200 hover:border-orange-300 hover:shadow-md transition-all overflow-hidden"
+                >
+                  <div className="relative h-40 bg-slate-100">
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={photo.url}
+                        alt={photo.altText ?? store.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-5xl">🃏</div>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      <PlanBadge rank={planRank} />
                     </div>
-                  )}
-                  <p className="text-xs text-slate-400 mt-2">
-                    {store._count.reviews}件の口コミ
-                  </p>
-                </div>
-              </Link>
+                  </div>
+                  <div className="p-4">
+                    <p className="font-semibold text-slate-800 truncate">{store.name}</p>
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                      <MapPin size={12} /> {store.prefecture.name} · {store.city}
+                    </p>
+                    {store.events.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {store.events.map((event) => (
+                          <p key={event.id} className="text-xs text-slate-600 truncate">
+                            {event.schedule ? `${event.schedule} ` : ""}{event.title}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-400 mt-2">
+                      {store._count.reviews}件の口コミ
+                    </p>
+                  </div>
+                </Link>
+                {userId && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <FavoriteButton
+                      storeId={store.id}
+                      initialIsFavorited={favoritedStoreIds.has(store.id)}
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

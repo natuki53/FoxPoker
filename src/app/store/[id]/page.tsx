@@ -14,12 +14,15 @@ import {
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { PlanBadge, Badge } from "@/components/ui/badge";
 import { formatPrice, DAY_OF_WEEK_LABELS } from "@/lib/utils";
 import type { Metadata } from "next";
 import { StoreGalleryLightbox } from "./store-gallery-lightbox";
 import { StorePublicBlocks } from "./store-public-blocks";
 import { parsePublicPageBlocks } from "@/lib/public-page-blocks";
+import { FavoriteButton } from "./favorite-button";
+import { ReviewForm } from "./review-form";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -38,6 +41,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function StoreDetailPage({ params }: Props) {
   const { id } = await params;
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   const store = await prisma.store.findUnique({
     where: { id, status: "APPROVED" },
@@ -77,6 +82,21 @@ export default async function StoreDetailPage({ params }: Props) {
   });
 
   if (!store) notFound();
+
+  const [isFavorited, existingReview] = await Promise.all([
+    userId
+      ? prisma.favoriteStore.findUnique({
+          where: { userId_storeId: { userId, storeId: id } },
+          select: { userId: true },
+        })
+      : null,
+    userId
+      ? prisma.review.findUnique({
+          where: { storeId_userId: { storeId: id, userId } },
+          select: { id: true },
+        })
+      : null,
+  ]);
 
   const publicPageBlocks = parsePublicPageBlocks(store.publicPageBlocks);
 
@@ -158,6 +178,12 @@ export default async function StoreDetailPage({ params }: Props) {
               </span>
             </div>
           )}
+
+          <FavoriteButton
+            storeId={store.id}
+            initialIsFavorited={!!isFavorited}
+            variant="detail"
+          />
 
           {store.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -425,11 +451,16 @@ export default async function StoreDetailPage({ params }: Props) {
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Star size={18} className="text-orange-500" /> 口コミ ({store._count.reviews}件)
           </h2>
+          <ReviewForm
+            storeId={store.id}
+            isLoggedIn={!!userId}
+            hasReviewed={!!existingReview}
+          />
         </div>
 
         {store.reviews.length === 0 ? (
           <p className="text-center py-8 text-slate-400">
-            まだ口コミはありません
+            まだ口コミはありません。最初の口コミを投稿してみましょう！
           </p>
         ) : (
           <div className="space-y-4">
