@@ -27,6 +27,7 @@ export function parsePublicPageBlocks(raw: unknown): PublicPageBlock[] {
   return parsed.success ? parsed.data : [];
 }
 
+/** @deprecated isAllowedStoreImageUrl from @/lib/storage を使用してください */
 export function isAllowedPageContentImageUrl(storeId: string, url: string): boolean {
   const safeId = storeId.replace(/[^a-zA-Z0-9_-]/g, "");
   return url.startsWith(`/uploads/stores/${safeId}/`);

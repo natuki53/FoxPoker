@@ -5,11 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { isAllowedPageContentImageUrl, publicPageBlocksSchema } from "@/lib/public-page-blocks";
+import { publicPageBlocksSchema } from "@/lib/public-page-blocks";
+import { uploadStoreFile, deleteStorageFile, isAllowedStoreImageUrl } from "@/lib/storage";
 
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
 const MAX_GALLERY_IMAGES = 50;
@@ -27,13 +25,6 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/gif",
 ]);
 
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-  "image/avif": ".avif",
-  "image/gif": ".gif",
-};
 
 const updateStoreProfileSchema = z.object({
   storeId: z.string().min(1),
@@ -134,30 +125,6 @@ async function requireOwnedStore(storeId: string, userId: string) {
   return store;
 }
 
-async function persistUploadedFile(storeId: string, file: File) {
-  const ext = EXT_BY_MIME[file.type] || path.extname(file.name).toLowerCase() || ".jpg";
-  const safeStoreId = storeId.replace(/[^a-zA-Z0-9_-]/g, "");
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "stores", safeStoreId);
-  await mkdir(uploadDir, { recursive: true });
-
-  const fileName = `${Date.now()}-${randomUUID()}${ext}`;
-  const absFilePath = path.join(uploadDir, fileName);
-  const publicUrl = `/uploads/stores/${safeStoreId}/${fileName}`;
-
-  const arrayBuffer = await file.arrayBuffer();
-  await writeFile(absFilePath, Buffer.from(arrayBuffer));
-
-  return { publicUrl };
-}
-
-async function unlinkStoreUploadIfLocal(url: string | null | undefined) {
-  if (!url || !url.startsWith("/uploads/stores/")) return;
-  const publicRoot = path.resolve(process.cwd(), "public");
-  const absolutePath = path.resolve(publicRoot, url.replace(/^\//, ""));
-  if (absolutePath.startsWith(publicRoot)) {
-    await unlink(absolutePath).catch(() => undefined);
-  }
-}
 
 function revalidateStorePages(storeId: string) {
   revalidatePath("/store-admin");
@@ -432,7 +399,7 @@ export async function updateStoreEvents(formData: FormData) {
         if (imageFile.size > MAX_UPLOAD_SIZE) {
           throw new Error(`${rowLabel}の画像サイズは5MB以下にしてください。`);
         }
-        const uploadResult = await persistUploadedFile(rawStoreId, imageFile);
+        const uploadResult = await uploadStoreFile(rawStoreId, imageFile);
         imageUrl = uploadResult.publicUrl;
         uploadedEventImageUrls.push(uploadResult.publicUrl);
       }
@@ -522,13 +489,13 @@ export async function updateStoreEvents(formData: FormData) {
       );
       for (const url of candidateUrls) {
         if (!referencedSet.has(url)) {
-          await unlinkStoreUploadIfLocal(url);
+          await deleteStorageFile(url);
         }
       }
     }
   } catch (error) {
     for (const url of uploadedEventImageUrls) {
-      await unlinkStoreUploadIfLocal(url);
+      await deleteStorageFile(url);
     }
     if (isRedirectError(error)) throw error;
     if (error instanceof Error) {
@@ -788,7 +755,7 @@ export async function uploadStorePhoto(formData: FormData) {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
 
-    const { publicUrl } = await persistUploadedFile(rawStoreId, file);
+    const { publicUrl, storageKey } = await uploadStoreFile(rawStoreId, file);
     const oldUrls = existingPhotos.map((p) => p.url);
 
     await prisma.$transaction(async (tx) => {
@@ -799,7 +766,7 @@ export async function uploadStorePhoto(formData: FormData) {
       await tx.storePhoto.create({
         data: {
           storeId: rawStoreId,
-          storageKey: publicUrl,
+          storageKey: storageKey,
           url: publicUrl,
           altText: altText.length > 0 ? altText : null,
           sortOrder: 0,
@@ -809,7 +776,7 @@ export async function uploadStorePhoto(formData: FormData) {
     });
 
     for (const url of oldUrls) {
-      await unlinkStoreUploadIfLocal(url);
+      await deleteStorageFile(url);
     }
   } catch (error) {
     if (isRedirectError(error)) throw error;
@@ -869,7 +836,7 @@ export async function uploadStoreGalleryImage(formData: FormData) {
       throw new Error(`ギャラリー画像は最大${MAX_GALLERY_IMAGES}枚まで登録できます。`);
     }
 
-    const { publicUrl } = await persistUploadedFile(rawStoreId, file);
+    const { publicUrl, storageKey } = await uploadStoreFile(rawStoreId, file);
     const sortOrder =
       store.galleryImages.length > 0
         ? Math.max(...store.galleryImages.map((p) => p.sortOrder)) + 1
@@ -878,7 +845,7 @@ export async function uploadStoreGalleryImage(formData: FormData) {
     await prisma.storeGalleryImage.create({
       data: {
         storeId: rawStoreId,
-        storageKey: publicUrl,
+        storageKey: storageKey,
         url: publicUrl,
         altText: altText.length > 0 ? altText : null,
         sortOrder,
@@ -1115,7 +1082,7 @@ export async function deleteStorePhoto(formData: FormData) {
     redirect(errorRedirectPath(storeId, "画像の削除に失敗しました。", redirectTab));
   }
 
-  await unlinkStoreUploadIfLocal(deletedPhotoUrl);
+  await deleteStorageFile(deletedPhotoUrl);
 
   revalidateStorePages(storeId);
   redirect(successRedirectPath(storeId, "photos", redirectTab));
@@ -1154,13 +1121,7 @@ export async function deleteStoreGalleryImage(formData: FormData) {
     redirect(errorRedirectPath(storeId, "ギャラリー画像の削除に失敗しました。", redirectTab));
   }
 
-  if (deletedImageUrl?.startsWith("/uploads/stores/")) {
-    const publicRoot = path.resolve(process.cwd(), "public");
-    const absolutePath = path.resolve(publicRoot, deletedImageUrl.replace(/^\//, ""));
-    if (absolutePath.startsWith(publicRoot)) {
-      await unlink(absolutePath).catch(() => undefined);
-    }
-  }
+  await deleteStorageFile(deletedImageUrl);
 
   revalidateStorePages(storeId);
   redirect(successRedirectPath(storeId, "gallery", redirectTab));
@@ -1198,7 +1159,7 @@ export async function uploadStorePageContentImage(
 
   try {
     await requireOwnedStore(rawStoreId, session.user.id);
-    const { publicUrl } = await persistUploadedFile(rawStoreId, file);
+    const { publicUrl } = await uploadStoreFile(rawStoreId, file);
     return { ok: true, url: publicUrl };
   } catch (error) {
     const message = error instanceof Error ? error.message : "アップロードに失敗しました。";
@@ -1215,7 +1176,7 @@ function sanitizePublicPageBlocks(
       return { ...block, level: 2 } as const;
     }
     if (block.type === "image") {
-      if (!isAllowedPageContentImageUrl(storeId, block.url)) {
+      if (!isAllowedStoreImageUrl(storeId, block.url)) {
         throw new Error(
           "お知らせの画像URLに不正な値が含まれています。画像はアップロードしたもののみ使えます。"
         );
