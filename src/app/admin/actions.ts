@@ -5,6 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { calcListingEndsAt, getPlanPrice } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
+import {
+  sendApplicationApproved,
+  sendApplicationRejected,
+} from "@/lib/email";
 
 async function requireAdmin() {
   const session = await auth();
@@ -21,7 +25,11 @@ export async function approveApplication(formData: FormData) {
 
   const application = await prisma.storeApplication.findUnique({
     where: { id },
-    include: { plan: true },
+    include: {
+      plan: true,
+      store: { select: { id: true, name: true } },
+      applicant: { select: { email: true, displayName: true } },
+    },
   });
   if (!application) throw new Error("Application not found");
 
@@ -94,6 +102,17 @@ export async function approveApplication(formData: FormData) {
   revalidatePath("/search");
   revalidatePath("/area");
   revalidatePath("/ranking");
+
+  // 承認メール送信（非同期・失敗しても処理は続行）
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  await sendApplicationApproved({
+    to: application.applicant.email,
+    displayName: application.applicant.displayName,
+    storeName: application.store.name,
+    planName: application.plan.name,
+    isFree: price === 0,
+    storeAdminUrl: `${baseUrl}/store-admin`,
+  }).catch((e) => console.error("[email] 承認メール送信失敗:", e));
 }
 
 export async function rejectApplication(formData: FormData) {
@@ -102,21 +121,41 @@ export async function rejectApplication(formData: FormData) {
   const reason = formData.get("reason") as string;
   if (!id) throw new Error("Application ID is required");
 
-  const application = await prisma.storeApplication.update({
+  // メール送信用に事前取得
+  const existing = await prisma.storeApplication.findUnique({
+    where: { id },
+    select: {
+      store: { select: { id: true, name: true } },
+      applicant: { select: { email: true, displayName: true } },
+    },
+  });
+
+  const rejectionReason = reason || "審査基準を満たしていないため";
+
+  await prisma.storeApplication.update({
     where: { id },
     data: {
       status: "REJECTED",
-      rejectionReason: reason || "審査基準を満たしていないため",
+      rejectionReason,
       reviewedBy: session.user.id,
       reviewedAt: new Date(),
     },
-    select: { storeId: true },
   });
 
   revalidatePath("/admin");
   revalidatePath("/admin/applications");
   revalidatePath("/store-admin");
-  revalidatePath(`/store-admin/stores/${application.storeId}`);
+  if (existing) {
+    revalidatePath(`/store-admin/stores/${existing.store.id}`);
+
+    // 却下メール送信
+    await sendApplicationRejected({
+      to: existing.applicant.email,
+      displayName: existing.applicant.displayName,
+      storeName: existing.store.name,
+      reason: rejectionReason,
+    }).catch((e) => console.error("[email] 却下メール送信失敗:", e));
+  }
 }
 
 export async function suspendStore(formData: FormData) {

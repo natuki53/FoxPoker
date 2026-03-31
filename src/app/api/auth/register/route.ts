@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { NextResponse } from "next/server";
+import { sendWelcomeEmail } from "@/lib/email";
 
 const registerSchema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
@@ -48,6 +49,11 @@ export async function POST(req: Request) {
         displayName,
       },
     });
+
+    // ウェルカムメール送信（失敗しても登録は成功）
+    await sendWelcomeEmail({ to: email, displayName }).catch((e) =>
+      console.error("[email] ウェルカムメール送信失敗:", e)
+    );
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {

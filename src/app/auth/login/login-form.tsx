@@ -12,6 +12,7 @@ export function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const errorParam = searchParams.get("error");
 
+  const statusParam = searchParams.get("status");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,6 +47,11 @@ export function LoginForm() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          {statusParam === "password_reset" && (
+            <div className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm p-3 rounded-lg mb-4">
+              パスワードを変更しました。新しいパスワードでログインしてください。
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg mb-4">
               {error}
@@ -118,6 +124,15 @@ export function LoginForm() {
               {loading ? "ログイン中..." : "ログイン"}
             </Button>
           </form>
+
+          <p className="text-center text-xs text-slate-400 mt-4">
+            <Link
+              href="/auth/forgot-password"
+              className="hover:text-orange-500 transition-colors"
+            >
+              パスワードをお忘れの方
+            </Link>
+          </p>
         </div>
 
         <p className="text-center text-sm text-slate-500 mt-4">

@@ -35,8 +35,22 @@ model User {
   reviewedApplications    StoreApplication[]       @relation("Reviewer")
   requestedStoreInfoEdits StoreInfoEditRequest[]   @relation("StoreInfoEditRequester")
   reviewedStoreInfoEdits  StoreInfoEditRequest[]   @relation("StoreInfoEditReviewer")
+  passwordResetTokens     PasswordResetToken[]
 
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
 }
 
 enum UserRole {

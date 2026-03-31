@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { sendContactNotification, sendContactAutoReply } from "@/lib/email";
 
 export const metadata: Metadata = { title: "お問い合わせ" };
 
@@ -12,6 +13,15 @@ async function submitContact(formData: FormData) {
   const message = String(formData.get("message") ?? "").trim();
 
   if (!name || !email || !category || !message) {
+    redirect("/contact?status=error");
+  }
+
+  const [notifyResult] = await Promise.all([
+    sendContactNotification({ name, email, category, message }),
+    sendContactAutoReply({ name, email, category }),
+  ]);
+
+  if (!notifyResult.ok) {
     redirect("/contact?status=error");
   }
 
@@ -35,19 +45,19 @@ export default async function ContactPage({
 
       {status === "sent" && (
         <div className="mb-4 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-4 py-3 text-sm">
-          お問い合わせを受け付けました。内容確認のうえ順次ご連絡します。
+          お問い合わせを受け付けました。ご入力いただいたメールアドレスに確認メールをお送りしました。内容確認のうえ順次ご連絡します。
         </div>
       )}
       {status === "error" && (
         <div className="mb-4 bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">
-          必須項目を入力してください。
+          送信に失敗しました。必須項目をすべて入力のうえ、もう一度お試しください。
         </div>
       )}
 
       <form action={submitContact} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         <div>
           <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1">
-            お名前
+            お名前 <span className="text-red-500">*</span>
           </label>
           <input
             id="name"
@@ -58,7 +68,7 @@ export default async function ContactPage({
         </div>
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
-            メールアドレス
+            メールアドレス <span className="text-red-500">*</span>
           </label>
           <input
             id="email"
@@ -70,7 +80,7 @@ export default async function ContactPage({
         </div>
         <div>
           <label htmlFor="category" className="block text-sm font-medium text-slate-700 mb-1">
-            お問い合わせ種別
+            お問い合わせ種別 <span className="text-red-500">*</span>
           </label>
           <select
             id="category"
@@ -87,7 +97,7 @@ export default async function ContactPage({
         </div>
         <div>
           <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1">
-            お問い合わせ内容
+            お問い合わせ内容 <span className="text-red-500">*</span>
           </label>
           <textarea
             id="message"
